@@ -74,7 +74,7 @@ type Props = {
   rewards: Array<Reward>,
   setReferrer: (string, boolean) => void,
   isAuthenticated: boolean,
-  syncLoop: (?boolean) => void,
+  syncLoop: () => void,
   currentModal: any,
   syncFatalError: boolean,
   activeChannelId: ?string,
@@ -193,7 +193,7 @@ function App(props: Props) {
             message={__('Failed to synchronize settings. Wait a while before retrying.')}
             actionText={__('Retry')}
             onClick={() => {
-              syncLoop(true);
+              syncLoop();
               setRetryingSync(true);
               setTimeout(() => setRetryingSync(false), 4000);
             }}
@@ -440,14 +440,13 @@ function App(props: Props) {
   // ready for sync syncs, however after signin when hasVerifiedEmail, that syncs too.
   useEffect(() => {
     // signInSyncPref is cleared after sharedState loop.
-    const syncLoopWithoutInterval = () => syncLoop(true);
     if (hasSignedIn && hasVerifiedEmail) {
       // In case we are syncing.
       syncLoop();
-      window.addEventListener('focus', syncLoopWithoutInterval);
+      window.addEventListener('focus', syncLoop);
     }
     return () => {
-      window.removeEventListener('focus', syncLoopWithoutInterval);
+      window.removeEventListener('focus', syncLoop);
     };
   }, [hasSignedIn, hasVerifiedEmail, syncLoop]);
 
