@@ -139,7 +139,7 @@ const Header = (props: Props) => {
                   : __('Your Wallet')
               }
             >
-              <div>
+              <div className="test">
                 {balanceLoading ? (
                   <Skeleton variant="text" animation="wave" className="header__navigationItem--balanceLoading" />
                 ) : (

@@ -56,6 +56,7 @@
 
   @media (max-width: $breakpoint-small) {
     padding: var(--spacing-xs);
+    height: var(--header-height-mobile);
   }
 }
 
@@ -66,6 +67,11 @@
   height: var(--header-height);
   padding: var(--spacing-s) var(--spacing-m);
   flex-wrap: nowrap;
+
+  @media (max-width: $breakpoint-small) {
+    padding: var(--spacing-xs);
+    height: var(--header-height-mobile);
+  }
 }
 
 .card__actions--between {
@@ -123,6 +129,10 @@
   &[aria-expanded='true'] {
     background-color: var(--color-header-button-active);
   }
+
+  @media (max-width: $breakpoint-small) {
+    height: var(--height-button-mobile);
+  }
 }
 
 .header__navigationItem--icon {
@@ -144,6 +154,7 @@
 
   @media (max-width: $breakpoint-small) {
     margin: 0;
+    width: var(--height-button-mobile);
   }
 
   span {
@@ -165,6 +176,15 @@
 
   &:hover {
     opacity: 0.7;
+  }
+
+  @media (max-width: $breakpoint-small) {
+    margin: 0;
+
+    .channel-thumbnail {
+      height: var(--height-button-mobile);
+      width: var(--height-button-mobile);
+    }
   }
 }
 
@@ -256,6 +276,5 @@
 .ReactModal__Overlay {
   .button--close {
     margin: 0;
-    margin-top: var(--spacing-xxs);
   }
 }
