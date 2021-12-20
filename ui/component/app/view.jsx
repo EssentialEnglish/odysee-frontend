@@ -20,6 +20,7 @@ import usePrevious from 'effects/use-previous';
 import Nag from 'component/common/nag';
 import REWARDS from 'rewards';
 import usePersistedState from 'effects/use-persisted-state';
+import useOnlineStatus from 'effects/use-online-status';
 import Spinner from 'component/spinner';
 import LANGUAGES from 'constants/languages';
 import YoutubeWelcome from 'web/component/youtubeReferralWelcome';
@@ -47,6 +48,8 @@ const SyncFatalError = lazyImport(() => import('component/syncFatalError' /* web
 
 export const MAIN_WRAPPER_CLASS = 'main-wrapper';
 export const IS_MAC = navigator.userAgent.indexOf('Mac OS X') !== -1;
+
+const RESYNC_AFTER_OFFLINE_MS = 5 * 60 * 1000;
 
 // const imaLibraryPath = 'https://imasdk.googleapis.com/js/sdkloader/ima3.js';
 const oneTrustScriptSrc = 'https://cdn.cookielaw.org/scripttemplates/otSDKStub.js';
@@ -153,7 +156,7 @@ function App(props: Props) {
   const hasActiveChannelClaim = activeChannelId !== undefined;
   const isPersonalized = !IS_WEB || hasVerifiedEmail;
   const renderFiledrop = !IS_WEB || isAuthenticated;
-  const isOnline = navigator.onLine;
+  const connectionStatus = useOnlineStatus();
 
   let uri;
   try {
@@ -167,7 +170,7 @@ function App(props: Props) {
 
   function getStatusNag() {
     // Handle "offline" first. Everything else is meaningless if it's offline.
-    if (!isOnline) {
+    if (!connectionStatus.online) {
       return <Nag type="helpful" message={__('You are offline. Check your internet connection.')} />;
     }
 
@@ -460,6 +463,12 @@ function App(props: Props) {
 
   useDegradedPerformance(setLbryTvApiStatus, user);
 
+  useEffect(() => {
+    if (connectionStatus.offlineDurationMs && connectionStatus.offlineDurationMs > RESYNC_AFTER_OFFLINE_MS) {
+      syncLoop();
+    }
+  }, [connectionStatus.offlineDurationMs]);
+
   // Require an internal-api user on lbry.tv
   // This also prevents the site from loading in the un-authed state while we wait for internal-apis to return for the first time
   // It's not needed on desktop since there is no un-authed state
@@ -471,7 +480,7 @@ function App(props: Props) {
     );
   }
 
-  if (isOnline && lbryTvApiStatus === STATUS_DOWN) {
+  if (connectionStatus.online && lbryTvApiStatus === STATUS_DOWN) {
     // TODO: Rename `SyncFatalError` since it has nothing to do with syncing.
     return (
       <React.Suspense fallback={null}>
