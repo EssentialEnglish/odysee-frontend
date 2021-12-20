@@ -20,6 +20,7 @@ import usePrevious from 'effects/use-previous';
 import Nag from 'component/common/nag';
 import REWARDS from 'rewards';
 import usePersistedState from 'effects/use-persisted-state';
+import useOnlineStatus from 'effects/use-online-status';
 import Spinner from 'component/spinner';
 import LANGUAGES from 'constants/languages';
 import YoutubeWelcome from 'web/component/youtubeReferralWelcome';
@@ -48,6 +49,8 @@ const SyncFatalError = lazyImport(() => import('component/syncFatalError' /* web
 export const MAIN_WRAPPER_CLASS = 'main-wrapper';
 export const IS_MAC = navigator.userAgent.indexOf('Mac OS X') !== -1;
 
+const RESYNC_AFTER_OFFLINE_MS = 5 * 60 * 1000;
+
 // const imaLibraryPath = 'https://imasdk.googleapis.com/js/sdkloader/ima3.js';
 const oneTrustScriptSrc = 'https://cdn.cookielaw.org/scripttemplates/otSDKStub.js';
 
@@ -69,12 +72,11 @@ type Props = {
   autoUpdateDownloaded: boolean,
   uploadCount: number,
   balance: ?number,
-  syncIsLocked: boolean,
   syncError: ?string,
   rewards: Array<Reward>,
   setReferrer: (string, boolean) => void,
   isAuthenticated: boolean,
-  syncLoop: (?boolean) => void,
+  syncLoop: () => void,
   currentModal: any,
   syncFatalError: boolean,
   activeChannelId: ?string,
@@ -102,7 +104,6 @@ function App(props: Props) {
     uploadCount,
     history,
     syncError,
-    syncIsLocked,
     language,
     languages,
     setLanguage,
@@ -155,7 +156,7 @@ function App(props: Props) {
   const hasActiveChannelClaim = activeChannelId !== undefined;
   const isPersonalized = !IS_WEB || hasVerifiedEmail;
   const renderFiledrop = !IS_WEB || isAuthenticated;
-  const isOnline = navigator.onLine;
+  const connectionStatus = useOnlineStatus();
 
   let uri;
   try {
@@ -169,7 +170,7 @@ function App(props: Props) {
 
   function getStatusNag() {
     // Handle "offline" first. Everything else is meaningless if it's offline.
-    if (!isOnline) {
+    if (!connectionStatus.online) {
       return <Nag type="helpful" message={__('You are offline. Check your internet connection.')} />;
     }
 
@@ -193,7 +194,7 @@ function App(props: Props) {
             message={__('Failed to synchronize settings. Wait a while before retrying.')}
             actionText={__('Retry')}
             onClick={() => {
-              syncLoop(true);
+              syncLoop();
               setRetryingSync(true);
               setTimeout(() => setRetryingSync(false), 4000);
             }}
@@ -217,17 +218,6 @@ function App(props: Props) {
       setSearchUserId(userId);
     }
   }, [userId]);
-
-  useEffect(() => {
-    if (syncIsLocked) {
-      const handleBeforeUnload = (event) => {
-        event.preventDefault();
-        event.returnValue = __('There are unsaved settings. Exit the Settings Page to finalize them.');
-      };
-      window.addEventListener('beforeunload', handleBeforeUnload);
-      return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }
-  }, [syncIsLocked]);
 
   useEffect(() => {
     if (!uploadCount) return;
@@ -440,15 +430,10 @@ function App(props: Props) {
   // ready for sync syncs, however after signin when hasVerifiedEmail, that syncs too.
   useEffect(() => {
     // signInSyncPref is cleared after sharedState loop.
-    const syncLoopWithoutInterval = () => syncLoop(true);
     if (hasSignedIn && hasVerifiedEmail) {
       // In case we are syncing.
       syncLoop();
-      window.addEventListener('focus', syncLoopWithoutInterval);
     }
-    return () => {
-      window.removeEventListener('focus', syncLoopWithoutInterval);
-    };
   }, [hasSignedIn, hasVerifiedEmail, syncLoop]);
 
   useEffect(() => {
@@ -478,6 +463,12 @@ function App(props: Props) {
 
   useDegradedPerformance(setLbryTvApiStatus, user);
 
+  useEffect(() => {
+    if (connectionStatus.offlineDurationMs && connectionStatus.offlineDurationMs > RESYNC_AFTER_OFFLINE_MS) {
+      syncLoop();
+    }
+  }, [connectionStatus.offlineDurationMs]);
+
   // Require an internal-api user on lbry.tv
   // This also prevents the site from loading in the un-authed state while we wait for internal-apis to return for the first time
   // It's not needed on desktop since there is no un-authed state
@@ -489,7 +480,7 @@ function App(props: Props) {
     );
   }
 
-  if (isOnline && lbryTvApiStatus === STATUS_DOWN) {
+  if (connectionStatus.online && lbryTvApiStatus === STATUS_DOWN) {
     // TODO: Rename `SyncFatalError` since it has nothing to do with syncing.
     return (
       <React.Suspense fallback={null}>

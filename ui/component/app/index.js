@@ -1,6 +1,6 @@
 import { hot } from 'react-hot-loader/root';
 import { connect } from 'react-redux';
-import { selectGetSyncErrorMessage, selectSyncFatalError, selectSyncIsLocked } from 'redux/selectors/sync';
+import { selectGetSyncErrorMessage, selectSyncFatalError } from 'redux/selectors/sync';
 import { doFetchAccessToken, doUserSetReferrer } from 'redux/actions/user';
 import { selectUser, selectAccessToken, selectUserVerifiedEmail } from 'redux/selectors/user';
 import { selectUnclaimedRewards } from 'redux/selectors/rewards';
@@ -32,7 +32,6 @@ const select = (state) => ({
   isUpgradeAvailable: selectIsUpgradeAvailable(state),
   isReloadRequired: selectIsReloadRequired(state),
   syncError: selectGetSyncErrorMessage(state),
-  syncIsLocked: selectSyncIsLocked(state),
   uploadCount: selectUploadCount(state),
   rewards: selectUnclaimedRewards(state),
   isAuthenticated: selectUserVerifiedEmail(state),
@@ -50,7 +49,7 @@ const perform = (dispatch) => ({
   setLanguage: (language) => dispatch(doSetLanguage(language)),
   signIn: () => dispatch(doSignIn()),
   requestDownloadUpgrade: () => dispatch(doDownloadUpgradeRequested()),
-  syncLoop: (noInterval) => dispatch(doSyncLoop(noInterval)),
+  syncLoop: () => dispatch(doSyncLoop()),
   setReferrer: (referrer, doClaim) => dispatch(doUserSetReferrer(referrer, doClaim)),
   setActiveChannelIfNotSet: () => dispatch(doSetActiveChannel()),
   setIncognito: () => dispatch(doSetIncognito()),

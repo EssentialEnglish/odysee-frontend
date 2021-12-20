@@ -4,20 +4,13 @@ import * as SETTINGS from 'constants/settings';
 import { Lbryio } from 'lbryinc';
 import Lbry from 'lbry';
 import { doWalletEncrypt, doWalletDecrypt } from 'redux/actions/wallet';
-import {
-  selectSyncHash,
-  selectGetSyncIsPending,
-  selectSetSyncIsPending,
-  selectSyncIsLocked,
-} from 'redux/selectors/sync';
+import { selectSyncHash, selectGetSyncIsPending, selectSetSyncIsPending } from 'redux/selectors/sync';
 import { selectClientSetting } from 'redux/selectors/settings';
 import { getSavedPassword, getAuthToken } from 'util/saved-passwords';
 import { doHandleSyncComplete } from 'redux/actions/app';
 import { selectUserVerifiedEmail } from 'redux/selectors/user';
 import { X_LBRY_AUTH_TOKEN } from 'constants/token';
 
-let syncTimer = null;
-const SYNC_INTERVAL = 1000 * 60 * 5; // 5 minutes
 const NO_WALLET_ERROR = 'no wallet found for this user';
 const BAD_PASSWORD_ERROR_NAME = 'InvalidPasswordError';
 
@@ -96,7 +89,7 @@ export function doSetSync(oldHash: string, newHash: string, data: any) {
   };
 }
 
-export const doGetSyncDesktop = (cb?: (any, any) => void, password?: string) => (
+export const doGetSyncDesktop = (cb?: (any, any) => void, password?: string, newData?: WalletUpdate) => (
   dispatch: Dispatch,
   getState: GetState
 ) => {
@@ -104,48 +97,48 @@ export const doGetSyncDesktop = (cb?: (any, any) => void, password?: string) => 
   const syncEnabled = selectClientSetting(state, SETTINGS.ENABLE_SYNC);
   const getSyncPending = selectGetSyncIsPending(state);
   const setSyncPending = selectSetSyncIsPending(state);
-  const syncLocked = selectSyncIsLocked(state);
 
   return getSavedPassword().then((savedPassword) => {
     const passwordArgument = password || password === '' ? password : savedPassword === null ? '' : savedPassword;
 
-    if (syncEnabled && !getSyncPending && !setSyncPending && !syncLocked) {
-      return dispatch(doGetSync(passwordArgument, cb));
+    if (syncEnabled && !getSyncPending && !setSyncPending) {
+      return dispatch(doGetSync(passwordArgument, cb, newData));
     }
   });
 };
 
-export function doSyncLoop(noInterval?: boolean) {
+/**
+ * doSyncLoop
+ *
+ * @param newData The new wallet data to merge. If undefined, will perform the
+ *   full fetch sequence.
+ * @returns {(function(Dispatch, GetState): void)|*}
+ */
+export function doSyncLoop(newData?: WalletUpdate) {
   return (dispatch: Dispatch, getState: GetState) => {
-    if (!noInterval && syncTimer) clearInterval(syncTimer);
     const state = getState();
     const hasVerifiedEmail = selectUserVerifiedEmail(state);
     const syncEnabled = selectClientSetting(state, SETTINGS.ENABLE_SYNC);
-    const syncLocked = selectSyncIsLocked(state);
-    if (hasVerifiedEmail && syncEnabled && !syncLocked) {
-      dispatch(doGetSyncDesktop((error, hasNewData) => dispatch(doHandleSyncComplete(error, hasNewData))));
-      if (!noInterval) {
-        syncTimer = setInterval(() => {
-          const state = getState();
-          const syncEnabled = selectClientSetting(state, SETTINGS.ENABLE_SYNC);
-          if (syncEnabled) {
-            dispatch(doGetSyncDesktop((error, hasNewData) => dispatch(doHandleSyncComplete(error, hasNewData))));
-          }
-        }, SYNC_INTERVAL);
-      }
+
+    if (hasVerifiedEmail && syncEnabled) {
+      const cb = (error, hasNewData) => dispatch(doHandleSyncComplete(error, hasNewData));
+      dispatch(doGetSyncDesktop(cb, undefined, newData));
     }
   };
 }
 
-export function doSyncUnsubscribe() {
-  return () => {
-    if (syncTimer) {
-      clearInterval(syncTimer);
+export function handleWalletUpdateNotification(newData: WalletUpdate) {
+  return (dispatch: Dispatch, getState: GetState) => {
+    const state = getState();
+    const syncHash = selectSyncHash(state);
+
+    if (syncHash !== newData.hash) {
+      dispatch(doSyncLoop(newData));
     }
   };
 }
 
-export function doGetSync(passedPassword?: string, callback?: (any, ?boolean) => void) {
+export function doGetSync(passedPassword?: string, callback?: (any, ?boolean) => void, newData?: WalletUpdate) {
   const password = passedPassword === null || passedPassword === undefined ? '' : passedPassword;
 
   function handleCallback(error, hasNewData) {
@@ -184,27 +177,42 @@ export function doGetSync(passedPassword?: string, callback?: (any, ?boolean) =>
         if (status.is_locked) {
           return Lbry.wallet_unlock({ password });
         }
-
         // Wallet is already unlocked
         return true;
       })
       .then((isUnlocked) => {
         if (isUnlocked) {
-          return Lbry.sync_hash();
+          return newData ? null : Lbry.sync_hash();
         }
         data.unlockFailed = true;
         throw new Error();
       })
-      .then((hash?: string) => Lbryio.call('sync', 'get', { hash }, 'post'))
-      .then((response: any) => {
-        const syncHash = response.hash;
-        data.syncHash = syncHash;
-        data.syncData = response.data;
-        data.changed = response.changed || syncHash !== localHash;
-        data.hasSyncedWallet = true;
+      .then((hash: ?string) => {
+        if (!newData) {
+          return Lbryio.call('sync', 'get', { hash }, 'post');
+        }
+      })
+      .then((response?: any) => {
+        console.assert(newData || response, 'newData or resp must be available here.');
 
-        if (response.changed) {
+        if (response) {
+          const syncHash = response.hash;
+          data.syncHash = syncHash;
+          data.syncData = response.data;
+          data.changed = response.changed || syncHash !== localHash;
+          data.hasSyncedWallet = true;
+
           return Lbry.sync_apply({ password, data: response.data, blocking: true });
+        }
+
+        if (newData) {
+          data.syncHash = newData.hash;
+          data.syncData = newData.data;
+          data.changed = newData.changed;
+          // data.version = newData.version;
+          data.hasSyncedWallet = true;
+
+          return Lbry.sync_apply({ password, data: newData.data, blocking: true });
         }
       })
       .then((response) => {
@@ -369,13 +377,6 @@ export function doSyncEncryptAndDecrypt(oldPassword: string, newPassword: string
         }
       })
       .catch(console.error); // eslint-disable-line
-  };
-}
-
-export function doSetSyncLock(lock: boolean) {
-  return {
-    type: ACTIONS.SET_SYNC_LOCK,
-    data: lock,
   };
 }
 
