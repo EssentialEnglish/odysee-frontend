@@ -13,7 +13,7 @@ import * as MODALS from 'constants/modal_types';
 import React, { Fragment, useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
-import { doDaemonReady, doAutoUpdate, doOpenModal, doHideModal, doToggle3PAnalytics } from 'redux/actions/app';
+import { doLbryReady, doAutoUpdate, doOpenModal, doHideModal, doToggle3PAnalytics } from 'redux/actions/app';
 import Lbry, { apiCall } from 'lbry';
 import { isURIValid } from 'util/lbryURI';
 import { setSearchApi } from 'redux/actions/search';
@@ -236,7 +236,7 @@ function AppWrapper() {
 
   useEffect(() => {
     if (readyToLaunch && persistDone) {
-      app.store.dispatch(doDaemonReady());
+      app.store.dispatch(doLbryReady());
 
       setTimeout(() => {
         if (DEFAULT_LANGUAGE) {
